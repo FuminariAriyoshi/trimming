@@ -195,8 +195,19 @@ export default class Sketch {
         // プリロード枚数
         const preloadCount = Math.min(this.count, 5);
 
-        const loadingPercent = document.getElementById('loading-percent');
-        const loadingScreen = document.getElementById('loading-screen');
+        // iframe内の要素を取得
+        const iframe = document.getElementById('load');
+        let loadingPercent = null;
+        if (iframe) {
+            // iframeのロードを待つ場合もあるが、同ドメインならアクセス可
+            // ただしタイミング次第でnullになるので、try-catchやチェックが必要
+            try {
+                const doc = iframe.contentDocument || iframe.contentWindow.document;
+                loadingPercent = doc.getElementById('loading-percent');
+            } catch (e) {
+                console.warn("Could not access iframe content", e);
+            }
+        }
 
         // 1. まず最初の数枚をロード
         const preloadPromises = [];
@@ -213,10 +224,10 @@ export default class Sketch {
 
         Promise.all(preloadPromises).then(() => {
             // 2. 完了 -> アプリ開始（ローディング消去）
-            if (loadingScreen) {
-                loadingScreen.style.opacity = 0;
+            if (iframe) {
+                iframe.style.opacity = 0;
                 setTimeout(() => {
-                    loadingScreen.style.display = 'none';
+                    iframe.style.display = 'none';
                 }, 500);
             }
 
@@ -231,39 +242,47 @@ export default class Sketch {
     // 共通のロード＆メッシュ作成処理
     loadAndCreateMesh(img, index) {
         return new Promise((resolve) => {
-            new THREE.TextureLoader().load(img.src, (texture) => {
-                const material = new THREE.ShaderMaterial({
-                    uniforms: {
-                        time: { value: 0 },
-                        uBend: { value: 0.06 },
-                        uAxis: { value: this.width > 786 ? 0.0 : 1.0 },
-                        uTexture: { value: texture }
-                    },
-                    side: THREE.DoubleSide,
-                    fragmentShader: fragment,
-                    vertexShader: vertex,
-                    wireframe: false
-                });
+            new THREE.TextureLoader().load(
+                img.src,
+                (texture) => {
+                    const material = new THREE.ShaderMaterial({
+                        uniforms: {
+                            time: { value: 0 },
+                            uBend: { value: 0.06 },
+                            uAxis: { value: this.width > 786 ? 0.0 : 1.0 },
+                            uTexture: { value: texture }
+                        },
+                        side: THREE.DoubleSide,
+                        fragmentShader: fragment,
+                        vertexShader: vertex,
+                        wireframe: false
+                    });
 
-                this.materials[index] = material;
+                    this.materials[index] = material;
 
-                let mesh = new THREE.Mesh(this.geometry, material);
-                mesh.position.y = (index - (this.count - 1) / 2) * this.margin;
-                mesh.position.x = 0;
+                    let mesh = new THREE.Mesh(this.geometry, material);
+                    mesh.position.y = (index - (this.count - 1) / 2) * this.margin;
+                    mesh.position.x = 0;
 
-                this.scene.add(mesh);
-                this.meshes[index] = mesh;
+                    this.scene.add(mesh);
+                    this.meshes[index] = mesh;
 
-                // テキスト要素の関連付け
-                const textEl = img.parentElement.querySelector('.text');
-                this.textElements[index] = textEl;
-                if (textEl) {
-                    const targets = textEl.querySelectorAll('.year, .date');
-                    targets.forEach(el => this.wrapLettersInSpan(el));
+                    // テキスト要素の関連付け
+                    const textEl = img.parentElement.querySelector('.text');
+                    this.textElements[index] = textEl;
+                    if (textEl) {
+                        const targets = textEl.querySelectorAll('.year, .date');
+                        targets.forEach(el => this.wrapLettersInSpan(el));
+                    }
+
+                    resolve();
+                },
+                undefined, // onProgress
+                (err) => {
+                    console.warn(`Failed to load texture for index ${index}: ${img.src}`, err);
+                    resolve(); // エラーでも止まらないようにresolveする
                 }
-
-                resolve();
-            });
+            );
         });
     }
 
@@ -800,68 +819,31 @@ export default class Sketch {
         this.updateProgressUI(barIndex);
     }
 
+
     render() {
         this.time += 0.05;
 
-        // キーボード連続スクロール
-        const scrollSpeed = this.width > mobile ? 0.08 : 0.06;
-        if (this.isLongPress) {
-            this.scroll -= this.keyDirection * scrollSpeed;
+        // スクロールの慣性
+        this.scroll += (this.scrollTo - this.scroll) * 0.1;
 
-            const nextIndex = Math.round(-this.scroll / this.margin);
-            if (this.scrollIndex !== nextIndex) {
-                this.scrollIndex = nextIndex;
-                if (!this.isZoomed) {
-                    this.updateText();
-                }
-            }
-        }
-
-        this.FirstToLast();
-
-
-        if (this.meshes) {
-            const wholeSize = this.meshes.length * this.margin;
-            const isHorizontal = this.width > mobile;
-
-            // Page Number Update
-            let rawIdx = -this.scroll / this.margin;
-            let idx = (rawIdx % this.count + this.count) % this.count;
-            const currentPage = (Math.round(idx) % this.count) + 1;
-
-            // Check elements existence before updating to avoid errors if elements missing
-            const currentEl = document.getElementById('current-page');
-            const totalEl = document.getElementById('total-pages');
-
-            if (currentEl) currentEl.textContent = currentPage;
-            if (totalEl) totalEl.textContent = this.count;
-
-            this.meshes.forEach((mesh, i) => {
-                if (isHorizontal) {
-                    // 横方向アニメーション
-                    const val = i * this.margin + this.scroll + wholeSize / 2;
-                    mesh.position.x = ((val % wholeSize) + wholeSize) % wholeSize - wholeSize / 2;
-                    mesh.position.y = 0;
-                } else {
-                    // 縦方向アニメーション
-                    const val = i * this.margin + this.scroll + wholeSize / 2;
-                    // Note: Y axis is usually inverted for scroll (scroll up = items move down? or scroll down = items move up?)
-                    // Current code: y = - (((val) % wholeSize) - offset).
-                    // If scroll decreases (move down list), val decreases.
-                    // Let's stick to the structure but fix the modulo.
-                    // mesh.position.y = - ( ((val % wholeSize) + wholeSize) % wholeSize - wholeSize / 2 );
-                    mesh.position.x = 0;
-                    mesh.position.y = - (((val % wholeSize) + wholeSize) % wholeSize - wholeSize / 2);
-                }
+        // update items
+        if (this.materials) {
+            this.materials.forEach(m => {
+                m.uniforms.time.value = this.time;
             });
         }
 
-        this.renderer.render(this.scene, this.camera);
+        if (this.meshes) {
+            this.meshes.forEach((mesh, index) => {
+                mesh.position.y = (index * this.margin) + this.scroll;
+            });
+        }
 
-        requestAnimationFrame(this.render.bind(this));
+        // update Progress Bar
+        this.FirstToLast();
+
+
+        this.renderer.render(this.scene, this.camera);
+        window.requestAnimationFrame(this.render.bind(this));
     }
 }
-
-new Sketch({
-    domElement: document.getElementById('container'),
-});

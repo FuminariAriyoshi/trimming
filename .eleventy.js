@@ -9,6 +9,8 @@ module.exports = (eleventyConfig) => {
   eleventyConfig.addPassthroughCopy('js');
   eleventyConfig.addPassthroughCopy('img');
   eleventyConfig.addPassthroughCopy('styles.css');
+  eleventyConfig.addPassthroughCopy('load.css');
+  eleventyConfig.addPassthroughCopy('load.html');
   eleventyConfig.addPassthroughCopy('404.html');
 
   const options = {
