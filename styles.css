@@ -20,6 +20,8 @@ body {
 
 .header a {
     text-decoration: none;
+    font-family: Inter;
+    font-weight: 400;
     color: black;
     opacity: 0.3;
     position: relative;

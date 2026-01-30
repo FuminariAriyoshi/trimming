@@ -57,10 +57,20 @@ export default class Sketch {
 
         // ローディング完了後（あるいは即時）アニメーション開始
         // 本来はローディング完了イベントを待つべきですが、ここでは即時実行します
-        this.initialCameraAnimation();
+        // ローディング完了後（あるいは即時）アニメーション開始
+        // 本来はローディング完了イベントを待つべきですが、ここでは即時実行します
+        // this.initialCameraAnimation();
     }
 
     initialCameraAnimation() {
+        // Hide UI elements initially
+        const pageIndicator = document.querySelector('.page-indicator');
+        const headerLinkText = document.querySelector('.header a .link-text');
+
+        if (pageIndicator) pageIndicator.style.opacity = '0';
+        if (headerLinkText) headerLinkText.style.opacity = '0';
+        // Progress bar is hidden via revealThreshold logic ininitProgress
+
         // 1/4周分戻った位置からスタート（例: 40枚なら index -10 相当 = 30枚目付近）
         const quarterIndex = Math.round(this.count / 4);
 
@@ -86,23 +96,23 @@ export default class Sketch {
                 this.updateText(); // テキスト表示
 
                 // ページ番号アニメーション
-                const pageIndicator = document.querySelector('.page-indicator');
                 if (pageIndicator) {
+                    pageIndicator.style.opacity = '0.3';
                     const pageNum = pageIndicator.querySelector('span');
                     if (pageNum) {
                         gsap.fromTo(pageNum,
                             { y: '100%' },
-                            { y: '0%', duration: 0.5, ease: 'power4.out' }
+                            { y: '0%', duration: 1, ease: 'power4.out' }
                         );
                     }
                 }
 
-                // Instagramリンクのアニメーション (テキストのみ動かす)
-                const headerLinkText = document.querySelector('.header a .link-text');
+                // Instagramリンクのアニメーション
                 if (headerLinkText) {
+                    headerLinkText.style.opacity = '1';
                     gsap.fromTo(headerLinkText,
                         { y: '100%' },
-                        { y: '0%', duration: 0.5, ease: 'power4.out' }
+                        { y: '0%', duration: 1, ease: 'power4.out' }
                     );
                 }
 
@@ -216,6 +226,13 @@ export default class Sketch {
         let completed = 0;
         preloadPromises.forEach(p => p.then(() => {
             completed++;
+            // Retry fetching the element if it wasn't found initially
+            if (!loadingPercent && iframe) {
+                try {
+                    const doc = iframe.contentDocument || iframe.contentWindow.document;
+                    loadingPercent = doc.getElementById('loading-percent');
+                } catch (e) { }
+            }
             if (loadingPercent) loadingPercent.innerText = Math.round((completed / preloadCount) * 100) + '%';
         }));
 
@@ -230,6 +247,7 @@ export default class Sketch {
 
             // 重要: 初期スクロールやアニメーションの開始トリガーがあればここで呼ぶ
             // 今回は render loop が既に回っているので、meshが増えれば表示される
+            this.initialCameraAnimation();
 
             // 3. 残りの画像をバックグラウンドで順次ロード
             this.loadRemainingImages(images, preloadCount);
@@ -258,8 +276,14 @@ export default class Sketch {
                     this.materials[index] = material;
 
                     let mesh = new THREE.Mesh(this.geometry, material);
-                    mesh.position.y = (index - (this.count - 1) / 2) * this.margin;
-                    mesh.position.x = 0;
+
+                    if (this.width > mobile) {
+                        mesh.position.x = (index - (this.count - 1) / 2) * this.margin;
+                        mesh.position.y = 0;
+                    } else {
+                        mesh.position.x = 0;
+                        mesh.position.y = (index - (this.count - 1) / 2) * this.margin;
+                    }
 
                     this.scene.add(mesh);
                     this.meshes[index] = mesh;
@@ -339,19 +363,56 @@ export default class Sketch {
     handleKeyDown(e) {
         if (!this.userInteractionsEnabled) return;
         if (e.repeat) return;
-        if (['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(e.key)) {
+
+        const isMobile = this.width <= mobile; // mobile defined as const mobile = 786;
+
+        // Define navigation keys based on device
+        // PC: Left/Right = Navigate, Up/Down = Zoom Only
+        // Mobile: Up/Down = Navigate, Left/Right = Zoom Only
+
+        let isNavKey = false;
+        let isZoomKey = false;
+        let direction = 0;
+
+        if (isMobile) {
+            // Mobile: Up/Down navigates
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                isNavKey = true;
+                direction = (e.key === 'ArrowDown') ? 1 : -1;
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                isZoomKey = true;
+            }
+        } else {
+            // PC: Left/Right navigates
+            if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                isNavKey = true;
+                // PC: Right is Forward (1), Left is Backward (-1)
+                // Note: Original code had Right=1. Assuming correct direction.
+                direction = (e.key === 'ArrowRight') ? 1 : -1;
+            } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                isZoomKey = true;
+            }
+        }
+
+        if (isNavKey || isZoomKey) {
             if (this.isKeyDown) return;
 
             this.isKeyDown = true;
             this.pressStartTime = Date.now();
-            this.keyDirection = (e.key === 'ArrowDown' || e.key === 'ArrowRight') ? 1 : -1;
+            this.keyDirection = direction;
+            this.isNavKeyActive = isNavKey;
 
             // タイマーセット: 200ms後に長押しと判定
             this.pressTimer = setTimeout(() => {
                 this.isLongPress = true;
-                this.isAnimating = true;
 
+                // 長押しの開始: カメラを引く
                 this.zoomCamera('longPress');
+
+                // ナビゲーションキーならスクロール開始フラグを立てる
+                if (this.isNavKeyActive) {
+                    this.isScrollingContinuous = true;
+                }
             }, 200);
         }
     }
@@ -365,18 +426,49 @@ export default class Sketch {
             }
 
             this.isKeyDown = false;
+            this.isScrollingContinuous = false; // Stop continuous scroll
 
             if (!this.isLongPress) {
-                // Short press: navigate
-                this.scrollIndex = Math.round(-this.scroll / this.margin);
-                this.navigate(this.keyDirection);
+                // Short press
+                if (this.isNavKeyActive) {
+                    // Navigate single step
+                    this.scrollIndex = Math.round(-this.scroll / this.margin);
+                    this.navigate(this.keyDirection);
+                }
+                // ZoomKey short press does nothing specific other than maybe preventing default
             } else {
-                // Long press finish
+                // Long press finish: Release
                 this.isLongPress = false;
 
+                // Snap to nearest
                 this.scrollIndex = Math.round(-this.scroll / this.margin);
                 this.animateScroll(this.scrollIndex);
                 this.resetCamera();
+            }
+
+            this.isNavKeyActive = false;
+        }
+    }
+
+    updateScrollDuringLongPress() {
+        if (this.isScrollingContinuous && this.isLongPress) {
+            // Continuous scroll
+            const speed = 0.05; // Adjust speed as needed
+            this.scroll -= this.keyDirection * speed; // Direction 1 adds index -> decreases scroll (scroll = -index*margin)
+
+            // Note: Since we manipulate this.scroll directly, updateText might not trigger automatically for new indices unless we force it or rely on render loop.
+            // But we only update text when camera is reset usually.
+
+            // Sync scrollIndex for reference
+            this.scrollIndex = -this.scroll / this.margin;
+
+            // Update pagination real-time
+            const rawIdx = Math.round(this.scrollIndex);
+            const idx = (rawIdx % this.count + this.count) % this.count;
+
+            const pageNum = document.getElementById('current-page');
+            if (pageNum) {
+                pageNum.innerText = idx + 1;
             }
         }
     }
@@ -474,6 +566,12 @@ export default class Sketch {
                 delay: oldText ? 0.4 : 0.1, // 少し待ってから出現
                 overwrite: true
             });
+        }
+
+        // Update pagination number
+        const pageNum = document.getElementById('current-page');
+        if (pageNum) {
+            pageNum.innerText = index + 1;
         }
 
         this.currentIndex = index;
@@ -688,7 +786,7 @@ export default class Sketch {
     onPointerDown(e) {
         if (!this.userInteractionsEnabled) return;
         this.isDragging = true;
-        this.isAnimating = true;
+        this.isAnimating = false; // Allow real-time scroll updates
 
         // カメラを引く
         this.zoomCamera();
@@ -732,6 +830,13 @@ export default class Sketch {
         // barCountに合わせてUI更新
         const barIndex = Math.round(ratio * (this.barCount - 1));
         this.updateProgressUI(barIndex);
+
+        // Update pagination immediately during drag
+        const currentIndex = Math.round(targetIndex);
+        const pageNum = document.getElementById('current-page');
+        if (pageNum) {
+            pageNum.innerText = (currentIndex % this.count) + 1;
+        }
     }
 
     updateProgressUI(index) {
@@ -810,7 +915,12 @@ export default class Sketch {
         const diff = Math.abs(targetRatio - this.progressRatio);
         const ease = 0.07;
 
-        this.progressRatio += (targetRatio - this.progressRatio) * ease;
+        if (this.isDragging) {
+            // Instant update during interaction
+            this.progressRatio = targetRatio;
+        } else {
+            this.progressRatio += (targetRatio - this.progressRatio) * ease;
+        }
 
         const barIndex = Math.round(this.progressRatio * (this.barCount - 1));
         this.updateProgressUI(barIndex);
@@ -820,8 +930,8 @@ export default class Sketch {
     render() {
         this.time += 0.05;
 
-        // スクロールの慣性
-        this.scroll += (this.scrollTo - this.scroll) * 0.1;
+        // スクロールの慣性 (競合するため削除)
+        // this.scroll += (this.scrollTo - this.scroll) * 0.1;
 
         // update items
         if (this.materials) {
@@ -831,8 +941,25 @@ export default class Sketch {
         }
 
         if (this.meshes) {
+            const wholeSize = this.count * this.margin;
+            const halfSize = wholeSize / 2;
+
             this.meshes.forEach((mesh, index) => {
-                mesh.position.y = (index * this.margin) + this.scroll;
+                // Calculate position with infinite wrapping
+                let rawPos = (index * this.margin) + this.scroll;
+
+                // Wrap position within [-halfSize, halfSize]
+                let pos = ((rawPos + halfSize) % wholeSize);
+                if (pos < 0) pos += wholeSize;
+                pos -= halfSize;
+
+                if (this.width > mobile) {
+                    mesh.position.x = pos;
+                    mesh.position.y = 0;
+                } else {
+                    mesh.position.x = 0;
+                    mesh.position.y = -pos;
+                }
             });
         }
 
@@ -840,7 +967,19 @@ export default class Sketch {
         this.FirstToLast();
 
 
+        // update Progress Bar
+        this.FirstToLast();
+
+        // Handle Continuous Scroll key press
+        this.updateScrollDuringLongPress();
+
+
         this.renderer.render(this.scene, this.camera);
         window.requestAnimationFrame(this.render.bind(this));
     }
 }
+
+
+new Sketch({
+    domElement: document.getElementById('container')
+});
