@@ -4,3 +4,8 @@ node_modules
 # eleventy output
 _site
 
+# parcel output/cache
+dist
+.parcel-cache
+.DS_Store
+

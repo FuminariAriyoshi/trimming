@@ -1,22 +1,72 @@
----
-permalink: 404.html
----
-
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
-    <title>Not Found</title>
-    <link rel="stylesheet" href="./styles/404.css" />
-  </head>
-  <body>
-    <div class="container">
-      <img src="https://http.cat/404.jpg" class="not-found" />
-      <div class="back-link">
-        Go <a href="/">Home</a>
-      </div>
-    </div>
-  </body>
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>404 - Page Not Found</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: #fff;
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+    }
+
+    .loader-container {
+      text-align: center;
+    }
+
+    /* .percent is used for error code? Yes, I used .error-code class but I should check if I need to update CSS too */
+    .label {
+      margin-top: 10px;
+      font-size: 14px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #666;
+    }
+
+    /* 404 specific overrides/additions */
+    body {
+      /* Ensure it looks like the loader */
+    }
+
+    .error-code {
+      font-size: 80px;
+      font-weight: 300;
+      color: #000;
+    }
+
+    .home-link {
+      margin-top: 30px;
+      display: inline-block;
+      text-decoration: none;
+      color: #000;
+      font-size: 14px;
+      letter-spacing: 1px;
+      border-bottom: 1px solid #000;
+      padding-bottom: 2px;
+      transition: opacity 0.3s;
+    }
+
+    .home-link:hover {
+      opacity: 0.6;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="loader-container">
+    <div class="error-code">404</div>
+    <div class="label">Page Not Found</div>
+    <a href="/" class="home-link">Back to Home</a>
+  </div>
+</body>
+
 </html>
