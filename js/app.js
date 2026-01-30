@@ -708,11 +708,22 @@ export default class Sketch {
         this.dragScrollStart = this.scroll;
         this.isZoomed = false;
 
-        // Camera zoom is now triggered in onCanvasMove
+        // Long press detection for touch
+        if (e.touches && e.touches.length > 0) {
+            this.touchLongPressTimer = setTimeout(() => {
+                this.isTouchLongPress = true;
+                this.zoomCamera('longPress');
+            }, 500);
+        }
     }
 
     onCanvasMove(e) {
         if (!this.isCanvasDragging) return;
+
+        // Prevent default browser scrolling on mobile explicitly
+        if (e.touches) {
+            e.preventDefault();
+        }
 
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -721,8 +732,15 @@ export default class Sketch {
         const deltaY = clientY - this.dragStart.y;
 
         // Trigger zoom only after movement
-        if (!this.isZoomed && Math.hypot(deltaX, deltaY) > 5) {
-            this.zoomCamera();
+        if (Math.hypot(deltaX, deltaY) > 5) {
+            if (this.touchLongPressTimer) {
+                clearTimeout(this.touchLongPressTimer);
+                this.touchLongPressTimer = null;
+            }
+
+            if (!this.isZoomed) {
+                this.zoomCamera();
+            }
         }
 
         let moveAmount = 0;
@@ -737,6 +755,11 @@ export default class Sketch {
     }
 
     onCanvasUp(e) {
+        if (this.touchLongPressTimer) {
+            clearTimeout(this.touchLongPressTimer);
+            this.touchLongPressTimer = null;
+        }
+
         if (!this.isCanvasDragging) return;
         this.isCanvasDragging = false;
 
@@ -767,7 +790,8 @@ export default class Sketch {
                 if (diff !== 0) {
                     this.scrollIndex += diff;
                     this.animateScroll(this.scrollIndex);
-                    // No camera reset needed as zoom wasn't triggered
+                    // Reset camera if it was zoomed (e.g. by long press)
+                    if (this.isZoomed) this.resetCamera();
                     return;
                 }
             }
