@@ -762,7 +762,7 @@ export default class Sketch {
             // So we MUST set it to true to allow onCanvasUp to fire.
             this.isCanvasDragging = true;
 
-            return; 
+            return;
         }
 
         // --- Desktop Logic Below --- 
@@ -788,9 +788,9 @@ export default class Sketch {
     }
 
     onCanvasMove(e) {
-        if (!this.isCanvasDragging) return;
+        if (this.width <= mobile) return; // Disable manual drag processing for mobile (handled by Observer)
 
-        // Prevent default browser scrolling on mobile explicitly
+        // Prevent default browser scrolling on mobile (redundant if return above, but safe)
         if (e.touches) {
             e.preventDefault();
         }
@@ -808,7 +808,7 @@ export default class Sketch {
                 this.touchLongPressTimer = null;
             }
 
-            if (this.width > mobile && !this.isZoomed) {
+            if (!this.isZoomed) {
                 this.zoomCamera();
             }
         }
@@ -904,7 +904,13 @@ export default class Sketch {
         }
 
         // Reset camera if it was zoomed (e.g. by long press)
-        if (this.isZoomed) this.resetCamera();
+        // Only reset if we are not in a persisted zoomed state (if user logic allows).
+        // For now, always reset on up.
+        if (this.isZoomed && this.width > mobile) this.resetCamera();
+
+        // For mobile, if it was a long press (isZoomed), we reset. 
+        // If it was a tap (navigated), we also reset if needed.
+        if (this.width <= mobile && this.isZoomed) this.resetCamera();
     }
     initProgress() {
         this.progress = document.querySelector('.progress');
