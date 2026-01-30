@@ -697,6 +697,12 @@ export default class Sketch {
         if (!this.userInteractionsEnabled) return;
         if (e.target.closest('.progress')) return;
 
+        // Mobile: Zoom disabled
+        if (this.width > mobile) {
+            // Long press detection for touch (Desktop/Tablet only logic if desired, or simplified)
+            // Actually, usually we zoom on long press. User said NO camera animation on mobile.
+        }
+
         this.isCanvasDragging = true;
         this.isAnimating = false;
 
@@ -708,8 +714,8 @@ export default class Sketch {
         this.dragScrollStart = this.scroll;
         this.isZoomed = false;
 
-        // Long press detection for touch
-        if (e.touches && e.touches.length > 0) {
+        // Long press detection for touch (Only if NOT mobile)
+        if (this.width > mobile && e.touches && e.touches.length > 0) {
             this.touchLongPressTimer = setTimeout(() => {
                 this.isTouchLongPress = true;
                 this.zoomCamera('longPress');
@@ -731,14 +737,14 @@ export default class Sketch {
         const deltaX = clientX - this.dragStart.x;
         const deltaY = clientY - this.dragStart.y;
 
-        // Trigger zoom only after movement
+        // Trigger zoom only after movement (Only if NOT mobile)
         if (Math.hypot(deltaX, deltaY) > 5) {
             if (this.touchLongPressTimer) {
                 clearTimeout(this.touchLongPressTimer);
                 this.touchLongPressTimer = null;
             }
 
-            if (!this.isZoomed) {
+            if (this.width > mobile && !this.isZoomed) {
                 this.zoomCamera();
             }
         }
@@ -768,7 +774,18 @@ export default class Sketch {
         const dist = Math.hypot(clientX - this.dragStart.x, clientY - this.dragStart.y);
 
         if (dist < 10 && this.meshes) {
-            // Click to navigate
+            // Mobile Tap Navigation
+            if (this.width <= mobile) {
+                const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+                if (clientY < this.height / 2) {
+                    this.navigate(-1); // Top half -> Prev
+                } else {
+                    this.navigate(1); // Bottom half -> Next
+                }
+                return;
+            }
+
+            // Click to navigate (Desktop)
             this.mouse.x = (clientX / window.innerWidth) * 2 - 1;
             this.mouse.y = -(clientY / window.innerHeight) * 2 + 1;
 
@@ -840,8 +857,10 @@ export default class Sketch {
         this.isDragging = true;
         this.isAnimating = false; // Allow real-time scroll updates
 
-        // カメラを引く
-        this.zoomCamera();
+        // カメラを引く (Mobileの場合は引かない)
+        if (this.width > mobile) {
+            this.zoomCamera();
+        }
 
         this.updateDrag(e);
     }
