@@ -814,13 +814,33 @@ export default class Sketch {
             }
         }
 
-        this.scrollIndex = Math.round(-this.scroll / this.margin);
-        this.animateScroll(this.scrollIndex);
+        if (this.width <= mobile) {
+            // Mobile Swipe Logic: Always move 1 item based on direction
+            const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+            const deltaY = clientY - this.dragStart.y;
+            const threshold = 30; // Swipe threshold
+            const startIdx = Math.round(-this.dragScrollStart / this.margin);
 
-        // Reset Camera
-        if (this.isZoomed) {
-            this.resetCamera();
+            if (Math.abs(deltaY) > threshold) {
+                if (deltaY > 0) {
+                    // Drag Down -> Prev
+                    this.scrollIndex = startIdx - 1;
+                } else {
+                    // Drag Up -> Next
+                    this.scrollIndex = startIdx + 1;
+                }
+            } else {
+                // Return to start if threshold not met
+                this.scrollIndex = startIdx;
+            }
+        } else {
+            // Desktop: Snap to nearest
+            this.scrollIndex = Math.round(-this.scroll / this.margin);
         }
+
+        this.animateScroll(this.scrollIndex);
+        // Reset camera if it was zoomed (e.g. by long press)
+        if (this.isZoomed) this.resetCamera();
     }
     initProgress() {
         this.progress = document.querySelector('.progress');
