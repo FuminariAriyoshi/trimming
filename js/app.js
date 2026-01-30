@@ -4,6 +4,9 @@ import dat from "dat.gui";
 
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { Observer } from "gsap/Observer";
+
+gsap.registerPlugin(Observer);
 import { uniform } from "three/src/nodes/TSL.js";
 import fragment from "./shaders/fragment.glsl";
 import vertex from "./shaders/vertex.glsl";
@@ -51,6 +54,7 @@ export default class Sketch {
         this.addObjects();
         // this.datSettings();
         this.initProgress(); // プログレスバー初期化
+        this.initObserver(); // Initialize GSAP Observer
         this.render();
         this.setupResize();
         // this.scrollAnimation(); // ここではまだ呼ばない
@@ -686,6 +690,11 @@ export default class Sketch {
         this.mouse = new THREE.Vector2();
 
         this.domElement.addEventListener('mousedown', this.onCanvasDown.bind(this));
+
+        // Touch events are now handled by Observer for Mobile, but we perform checks inside onCanvasDown for Desktop/Tablet hybrid or generic handling if needed.
+        // However, specifically to separate logic:
+        // Mobile uses Observer for navigation. Desktop uses Drag.
+        // We will keep listeners but guard inside handlers.
         this.domElement.addEventListener('touchstart', this.onCanvasDown.bind(this), { passive: false });
         window.addEventListener('mousemove', this.onCanvasMove.bind(this));
         window.addEventListener('touchmove', this.onCanvasMove.bind(this), { passive: false });
@@ -693,15 +702,58 @@ export default class Sketch {
         window.addEventListener('touchend', this.onCanvasUp.bind(this));
     }
 
+    initObserver() {
+        Observer.create({
+            target: this.domElement, // Canvas element
+            type: "touch,pointer", // Trigger on touch/pointer
+            tolerance: 10,
+            preventDefault: true,
+            onUp: () => {
+                if (this.width <= mobile) {
+                    this.navigate(1);
+                }
+            },
+            onDown: () => {
+                if (this.width <= mobile) {
+                    this.navigate(-1);
+                }
+            }
+        });
+    }
+
     onCanvasDown(e) {
         if (!this.userInteractionsEnabled) return;
         if (e.target.closest('.progress')) return;
 
-        // Mobile: Zoom disabled
-        if (this.width > mobile) {
-            // Long press detection for touch (Desktop/Tablet only logic if desired, or simplified)
-            // Actually, usually we zoom on long press. User said NO camera animation on mobile.
+        // Mobile: Delegated to Observer (ignore manual drag/tap handling)
+        // But allow Long Press for zoom? 
+        // User Request: "mobileの時はmonitorでスクロールの方向...swipeの方向だけで1ページずつ"
+        // And previously "画面を長押しした時はmobileでもカメラアニメーションつけて"
+
+        // So:
+        // Tap/Swipe -> Observer (Navigation)
+        // Long Press -> Camera Zoom (We need to keep detection for this)
+
+        // Ideally we shouldn't mix Observer and manual listeners for same element if they conflict, 
+        // but Observer with preventDefault might swallow events.
+        // Lets let Observer handle swipes. Manual listener handles Long Press detection?
+        // Or Observer can handle onPress/onRelease?
+
+        // For now, let's keep Long Press logic here but disable 'Dragging' logic on mobile.
+
+        if (this.width <= mobile) {
+            // Only allow Long Press logic, disable Drag
+            // Long press detection for touch
+            if (e.touches && e.touches.length > 0) {
+                this.touchLongPressTimer = setTimeout(() => {
+                    this.isTouchLongPress = true;
+                    this.zoomCamera('longPress');
+                }, 500);
+            }
+            return; // Skip drag logic
         }
+
+        // --- Desktop Logic Below --- 
 
         this.isCanvasDragging = true;
         this.isAnimating = false;
@@ -774,16 +826,8 @@ export default class Sketch {
         const dist = Math.hypot(clientX - this.dragStart.x, clientY - this.dragStart.y);
 
         if (dist < 10 && this.meshes) {
-            // Mobile Tap Navigation
-            if (this.width <= mobile) {
-                const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
-                if (clientY < this.height / 2) {
-                    this.navigate(-1); // Top half -> Prev
-                } else {
-                    this.navigate(1); // Bottom half -> Next
-                }
-                return;
-            }
+            // Mobile: Tap does nothing (disable tap navigation)
+            if (this.width <= mobile) return;
 
             // Click to navigate (Desktop)
             this.mouse.x = (clientX / window.innerWidth) * 2 - 1;
@@ -814,31 +858,12 @@ export default class Sketch {
             }
         }
 
-        if (this.width <= mobile) {
-            // Mobile Swipe Logic: Always move 1 item based on direction
-            const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
-            const deltaY = clientY - this.dragStart.y;
-            const threshold = 30; // Swipe threshold
-            const startIdx = Math.round(-this.dragScrollStart / this.margin);
-
-            if (Math.abs(deltaY) > threshold) {
-                if (deltaY > 0) {
-                    // Drag Down -> Prev
-                    this.scrollIndex = startIdx - 1;
-                } else {
-                    // Drag Up -> Next
-                    this.scrollIndex = startIdx + 1;
-                }
-            } else {
-                // Return to start if threshold not met
-                this.scrollIndex = startIdx;
-            }
-        } else {
-            // Desktop: Snap to nearest
+        // Desktop: Snap to nearest
+        if (this.width > mobile) {
             this.scrollIndex = Math.round(-this.scroll / this.margin);
+            this.animateScroll(this.scrollIndex);
         }
 
-        this.animateScroll(this.scrollIndex);
         // Reset camera if it was zoomed (e.g. by long press)
         if (this.isZoomed) this.resetCamera();
     }
