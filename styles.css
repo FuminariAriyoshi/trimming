@@ -1,0 +1,213 @@
+body {
+    background-color: white;
+    margin: 0;
+    overflow: hidden;
+}
+
+
+
+.header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: auto;
+    z-index: 1000;
+    padding: 16px;
+    box-sizing: border-box;
+    text-align: right;
+}
+
+.header a {
+    text-decoration: none;
+    color: black;
+    opacity: 0.3;
+    position: relative;
+    pointer-events: auto;
+    overflow: hidden;
+    display: inline-block;
+    vertical-align: top;
+}
+
+.header a .link-text {
+    display: block;
+    transform: translateY(100%);
+}
+
+
+
+.item img {
+    width: 100%;
+    display: block;
+    opacity: 0;
+}
+
+.item {
+    position: relative;
+    z-index: 100;
+    pointer-events: none;
+}
+
+.item .text {
+    color: black;
+    font-size: 128px;
+    font-family: Inter;
+    font-weight: 500;
+    word-wrap: break-word;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 100;
+    /* マウスイベントを透過させる */
+}
+
+.letter-wrapper {
+    overflow: hidden;
+    display: inline-block;
+    vertical-align: top;
+}
+
+.letter {
+    display: inline-block;
+    mix-blend-mode: difference;
+}
+
+.yearWrapper {
+    position: fixed;
+    top: 10%;
+    left: 10%;
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+}
+
+@media screen and (max-width: 1280px) {
+    .item .text {
+        font-size: 64px;
+    }
+
+    .yearWrapper {
+        top: 25%;
+        left: 8%;
+        gap: 10px;
+    }
+}
+
+@media screen and (max-width: 786px) {
+    .item .text {
+        font-size: 48px;
+    }
+
+    .yearWrapper {
+        bottom: 30%;
+        left: 5%;
+        gap: 10px;
+        top: auto;
+    }
+}
+
+.year {
+    font-weight: 300;
+}
+
+.date {
+    font-weight: 400;
+}
+
+#container canvas {
+    filter: drop-shadow(0px 15px 30px rgba(0, 0, 0, 0.07));
+}
+
+
+.item .text.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.progress {
+    position: fixed;
+    bottom: 25px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto;
+    height: 40px;
+    z-index: 1000;
+    cursor: pointer;
+    overflow: visible;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+}
+
+.progress-indicator {
+    position: relative;
+    width: 2px;
+    height: 12px;
+    background: #000;
+    opacity: 0;
+    border-radius: 1px;
+    pointer-events: none;
+    flex-shrink: 0;
+    transform: translateZ(0);
+}
+
+#container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 0;
+    touch-action: none;
+}
+
+@media screen and (max-width: 786px) {
+    .progress {
+        flex-direction: column;
+        width: 40px;
+        height: auto;
+        left: auto;
+        bottom: auto;
+        right: 20px;
+        top: 50%;
+        transform: translateY(-50%);
+        align-items: flex-end;
+    }
+
+    .progress-indicator {
+        width: 10px;
+        height: 2px;
+        transform-origin: right center;
+    }
+}
+
+.page-indicator {
+    position: fixed;
+    bottom: 65px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10001;
+    font-family: Inter, sans-serif;
+    font-size: 12px;
+    color: #000;
+    opacity: 0.3;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.page-indicator span {
+    display: block;
+    transform: translateY(100%);
+}
+
+@media screen and (max-width: 786px) {
+    .page-indicator {
+        bottom: auto;
+        /* left: auto; */
+        right: 40px;
+        left: auto;
+        /* Position it to the left of the vertical progress bar */
+        top: 50%;
+        transform: translateY(-50%);
+    }
+}
