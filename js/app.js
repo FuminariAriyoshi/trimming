@@ -709,12 +709,12 @@ export default class Sketch {
             tolerance: 10,
             preventDefault: true,
             onUp: () => {
-                if (this.width <= mobile) {
+                if (this.width <= mobile && !this.isPinching) {
                     this.navigate(1);
                 }
             },
             onDown: () => {
-                if (this.width <= mobile) {
+                if (this.width <= mobile && !this.isPinching) {
                     this.navigate(-1);
                 }
             }
@@ -742,8 +742,26 @@ export default class Sketch {
         // For now, let's keep Long Press logic here but disable 'Dragging' logic on mobile.
 
         if (this.width <= mobile) {
-            // Only allow Long Press logic, disable Drag
-            // Long press detection for touch
+            // Pinch to Zoom Detection (2 fingers)
+            if (e.touches && e.touches.length === 2) {
+                this.isPinching = true;
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                this.pinchStartDist = Math.hypot(dx, dy);
+                this.pinchStartZ = this.camera.position.z;
+
+                // Clear long press if pinching
+                if (this.touchLongPressTimer) {
+                    clearTimeout(this.touchLongPressTimer);
+                    this.touchLongPressTimer = null;
+                }
+
+                // Set dragging to true so onCanvasMove fires (though we need to bypass the mobile guard there)
+                this.isCanvasDragging = true;
+                return;
+            }
+
+            // Only allow Long Press logic, disable Drag (1 finger)
             if (e.touches && e.touches.length > 0) {
                 this.touchLongPressTimer = setTimeout(() => {
                     this.isTouchLongPress = true;
@@ -788,11 +806,33 @@ export default class Sketch {
     }
 
     onCanvasMove(e) {
-        if (this.width <= mobile) return; // Disable manual drag processing for mobile (handled by Observer)
+        // Allow mobile if pinching (2 fingers)
+        if (this.width <= mobile && !this.isPinching) return;
 
         // Prevent default browser scrolling on mobile (redundant if return above, but safe)
         if (e.touches) {
             e.preventDefault();
+        }
+
+        // Pinch Zoom Logic
+        if (this.isPinching && e.touches && e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.hypot(dx, dy);
+
+            if (this.pinchStartDist > 0) {
+                const scale = dist / this.pinchStartDist;
+                // scale > 1 (spreading) -> Zoom In -> Z decreases
+                // scale < 1 (pinching) -> Zoom Out -> Z increases
+
+                let targetZ = this.pinchStartZ / scale;
+                // Limit zoom range
+                targetZ = Math.max(0.5, Math.min(targetZ, 10)); // Adjust limits as needed
+
+                this.camera.position.z = targetZ;
+                this.isZoomed = true; // Mark as zoomed so release triggers reset
+            }
+            return;
         }
 
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -858,284 +898,309 @@ export default class Sketch {
             // Mobile: Tap Zones
             if (this.width <= mobile) {
                 if (this.isTouchLongPress) return; // Ignore if it was a long press
-
-                const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
-                if (clientY < this.height / 2) {
-                    this.navigate(-1); // Top half -> Prev
-                } else {
-                    this.navigate(1); // Bottom half -> Next
-                }
-                return;
-            }
-
-            // Click to navigate (Desktop)
-            this.mouse.x = (clientX / window.innerWidth) * 2 - 1;
-            this.mouse.y = -(clientY / window.innerHeight) * 2 + 1;
-
-            this.raycaster.setFromCamera(this.mouse, this.camera);
-            const intersects = this.raycaster.intersectObjects(this.meshes);
-
-            if (intersects.length > 0) {
-                const obj = intersects[0].object;
-                let diff = 0;
-
-                if (this.width > mobile) {
-                    if (obj.position.x > this.margin * 0.1) diff = 1;
-                    else if (obj.position.x < -this.margin * 0.1) diff = -1;
-                } else {
-                    if (obj.position.y < -this.margin * 0.1) diff = 1;
-                    else if (obj.position.y > this.margin * 0.1) diff = -1;
-                }
-
-                if (diff !== 0) {
-                    this.scrollIndex += diff;
-                    this.animateScroll(this.scrollIndex);
-                    // Reset camera if it was zoomed (e.g. by long press)
-                    if (this.isZoomed) this.resetCamera();
+                if (this.isPinching) {
+                    // Pinch ended
+                    this.isPinching = false;
+                    this.resetCamera();
                     return;
                 }
+
+                // If just finished pinching, prevent tap logic?
+                // Often 'touchend' happens 1 finger at a time.
+                // If isPinching was true, we should reset and return.
+                // We handle pinch end in top-level check or here?
+                // Let's rely on checking 'isPinching' state.
+                // However, onCanvasUp is called for EACH finger lift.
+                // When 1st finger lifts, touches.length becomes 1. isPinching should stop?
+
+                // Note: e.touches is list of CURRENT touches.
+                // If e.touches.length < 2, pinch ended.
+            }
+
+            const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+            if (clientY < this.height / 2) {
+                this.navigate(-1); // Top half -> Prev
+            } else {
+                this.navigate(1); // Bottom half -> Next
+            }
+            return;
+        }
+
+        // Click to navigate (Desktop)
+        this.mouse.x = (clientX / window.innerWidth) * 2 - 1;
+        this.mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        const intersects = this.raycaster.intersectObjects(this.meshes);
+
+        if (intersects.length > 0) {
+            const obj = intersects[0].object;
+            let diff = 0;
+
+            if (this.width > mobile) {
+                if (obj.position.x > this.margin * 0.1) diff = 1;
+                else if (obj.position.x < -this.margin * 0.1) diff = -1;
+            } else {
+                if (obj.position.y < -this.margin * 0.1) diff = 1;
+                else if (obj.position.y > this.margin * 0.1) diff = -1;
+            }
+
+            if (diff !== 0) {
+                this.scrollIndex += diff;
+                this.animateScroll(this.scrollIndex);
+                // Reset camera if it was zoomed (e.g. by long press)
+                if (this.isZoomed) this.resetCamera();
+                return;
             }
         }
-
-        // Desktop: Snap to nearest
-        if (this.width > mobile) {
-            this.scrollIndex = Math.round(-this.scroll / this.margin);
-            this.animateScroll(this.scrollIndex);
-        }
-
-        // Reset camera if it was zoomed (e.g. by long press)
-        // Only reset if we are not in a persisted zoomed state (if user logic allows).
-        // For now, always reset on up.
-        if (this.isZoomed && this.width > mobile) this.resetCamera();
-
-        // For mobile, if it was a long press (isZoomed), we reset. 
-        // If it was a tap (navigated), we also reset if needed.
-        if (this.width <= mobile && this.isZoomed) this.resetCamera();
-    }
-    initProgress() {
-        this.progress = document.querySelector('.progress');
-        this.progress.innerHTML = '';
-        this.indicators = [];
-
-        this.barCount = window.innerWidth > mobile ? 40 : 40; // モバイルは本数を減らす
-        this.revealThreshold = -1; // 初期はすべて隠す（左から出現させるため）
-
-        for (let i = 0; i < this.barCount; i++) {
-            const div = document.createElement('div');
-            div.classList.add('progress-indicator');
-            this.progress.appendChild(div);
-            this.indicators.push(div);
-        }
-
-        this.isDragging = false;
-
-        // Mouse (Hover interaction)
-        this.progress.addEventListener('mouseenter', (e) => this.onPointerDown(e));
-        this.progress.addEventListener('mouseleave', () => this.onPointerUp());
-        this.progress.addEventListener('mousemove', (e) => this.onPointerMove(e));
-
-        // Touch (Drag interaction)
-        this.progress.addEventListener('touchstart', (e) => this.onPointerDown(e.touches[0]));
-        window.addEventListener('touchmove', (e) => this.onPointerMove(e.touches[0]));
-        window.addEventListener('touchend', () => this.onPointerUp());
-
-        this.progressRatio = 0; // スムージング用
     }
 
-    onPointerDown(e) {
-        if (!this.userInteractionsEnabled) return;
-        this.isDragging = true;
-        this.isAnimating = false; // Allow real-time scroll updates
+    // Desktop: Snap to nearest
+    if(this.width > mobile) {
+    this.scrollIndex = Math.round(-this.scroll / this.margin);
+    this.animateScroll(this.scrollIndex);
+}
 
-        // カメラを引く
-        this.zoomCamera();
+// Reset camera if it was zoomed (e.g. by long press)
+// Only reset if we are not in a persisted zoomed state (if user logic allows).
+// For now, always reset on up.
+if (this.isZoomed && this.width > mobile) this.resetCamera();
 
-        this.updateDrag(e);
-    }
-
-    onPointerMove(e) {
-        if (!this.isDragging) return;
-        this.updateDrag(e);
-    }
-
-    onPointerUp() {
-        if (!this.isDragging) return;
-        this.isDragging = false;
-
-        // 吸着
-        this.scrollIndex = Math.round(-this.scroll / this.margin);
-        this.animateScroll(this.scrollIndex);
-
-        // カメラ戻す
+// For mobile, if it was a long press (isZoomed), we reset. 
+// If it was a tap (navigated), we also reset if needed.
+if (this.width <= mobile) {
+    if (this.isPinching && (!e.touches || e.touches.length < 2)) {
+        this.isPinching = false;
+        this.resetCamera();
+    } else if (this.isZoomed && !this.isPinching) {
         this.resetCamera();
     }
+}
+}
+initProgress() {
+    this.progress = document.querySelector('.progress');
+    this.progress.innerHTML = '';
+    this.indicators = [];
 
-    updateDrag(e) {
-        const rect = this.progress.getBoundingClientRect();
-        let ratio;
+    this.barCount = window.innerWidth > mobile ? 40 : 40; // モバイルは本数を減らす
+    this.revealThreshold = -1; // 初期はすべて隠す（左から出現させるため）
 
-        if (this.width > mobile) {
-            ratio = (e.clientX - rect.left) / rect.width;
-        } else {
-            ratio = (e.clientY - rect.top) / rect.height;
-        }
-
-        ratio = Math.max(0, Math.min(1, ratio));
-
-        // 滑らかにスクロール (Math.roundしない)
-        const targetIndex = ratio * (this.count - 1);
-        this.scroll = -targetIndex * this.margin;
-
-        // barCountに合わせてUI更新
-        const barIndex = Math.round(ratio * (this.barCount - 1));
-        this.updateProgressUI(barIndex);
-
-        // Update pagination immediately during drag
-        const currentIndex = Math.round(targetIndex);
-        const pageNum = document.getElementById('current-page');
-        if (pageNum) {
-            pageNum.innerText = (currentIndex % this.count) + 1;
-        }
+    for (let i = 0; i < this.barCount; i++) {
+        const div = document.createElement('div');
+        div.classList.add('progress-indicator');
+        this.progress.appendChild(div);
+        this.indicators.push(div);
     }
 
-    updateProgressUI(index) {
-        if (!this.indicators) return;
+    this.isDragging = false;
 
-        const count = this.indicators.length;
-        const activeSpread = 10;
-        const edgeSpread = 8;
+    // Mouse (Hover interaction)
+    this.progress.addEventListener('mouseenter', (e) => this.onPointerDown(e));
+    this.progress.addEventListener('mouseleave', () => this.onPointerUp());
+    this.progress.addEventListener('mousemove', (e) => this.onPointerMove(e));
 
-        const getGauss = (dist, spread) => {
-            if (dist > spread) return 0;
-            const sigma = spread / 2.5;
-            return Math.exp(- (dist * dist) / (2 * sigma * sigma));
-        };
+    // Touch (Drag interaction)
+    this.progress.addEventListener('touchstart', (e) => this.onPointerDown(e.touches[0]));
+    window.addEventListener('touchmove', (e) => this.onPointerMove(e.touches[0]));
+    window.addEventListener('touchend', () => this.onPointerUp());
 
-        const getQuad = (dist, spread) => {
-            if (dist > spread) return 0;
-            return Math.pow(1 - dist / spread, 2);
-        };
+    this.progressRatio = 0; // スムージング用
+}
 
-        this.indicators.forEach((el, i) => {
-            // スタイル計算
-            const distActive = Math.abs(i - index);
-            // 操作可能になるまではハイライト（ホバーエフェクト）を出さない
-            const strActive = this.userInteractionsEnabled ? getGauss(distActive, activeSpread) : 0;
+onPointerDown(e) {
+    if (!this.userInteractionsEnabled) return;
+    this.isDragging = true;
+    this.isAnimating = false; // Allow real-time scroll updates
 
-            const distStart = Math.abs(i - 0);
-            const strStart = getQuad(distStart, edgeSpread);
+    // カメラを引く
+    this.zoomCamera();
 
-            const distEnd = Math.abs(i - (count - 1));
-            const strEnd = getQuad(distEnd, edgeSpread);
+    this.updateDrag(e);
+}
 
-            // 高さ計算
-            let scale = 1 + strActive * 0.4;
-            scale += strStart * 0.3;
-            scale += strEnd * 0.3;
+onPointerMove(e) {
+    if (!this.isDragging) return;
+    this.updateDrag(e);
+}
 
-            // 透明度計算
-            let opacity = 0.1 + 0.1 * strActive;
+onPointerUp() {
+    if (!this.isDragging) return;
+    this.isDragging = false;
 
-            // 出現アニメーション用: revealThresholdより大きいインデックスは隠す
-            // (左=小さいインデックス から出現させるため、i <= this.revealThreshold なら表示)
-            if (i > this.revealThreshold) {
-                opacity = 0;
-            }
+    // 吸着
+    this.scrollIndex = Math.round(-this.scroll / this.margin);
+    this.animateScroll(this.scrollIndex);
 
-            if (window.innerWidth > mobile) {
-                el.style.transform = `scaleY(${scale})`;
-            } else {
-                el.style.transform = `scaleX(${scale})`;
-                el.style.transformOrigin = 'right center';
-            }
-            el.style.opacity = opacity;
+    // カメラ戻す
+    this.resetCamera();
+}
+
+updateDrag(e) {
+    const rect = this.progress.getBoundingClientRect();
+    let ratio;
+
+    if (this.width > mobile) {
+        ratio = (e.clientX - rect.left) / rect.width;
+    } else {
+        ratio = (e.clientY - rect.top) / rect.height;
+    }
+
+    ratio = Math.max(0, Math.min(1, ratio));
+
+    // 滑らかにスクロール (Math.roundしない)
+    const targetIndex = ratio * (this.count - 1);
+    this.scroll = -targetIndex * this.margin;
+
+    // barCountに合わせてUI更新
+    const barIndex = Math.round(ratio * (this.barCount - 1));
+    this.updateProgressUI(barIndex);
+
+    // Update pagination immediately during drag
+    const currentIndex = Math.round(targetIndex);
+    const pageNum = document.getElementById('current-page');
+    if (pageNum) {
+        pageNum.innerText = (currentIndex % this.count) + 1;
+    }
+}
+
+updateProgressUI(index) {
+    if (!this.indicators) return;
+
+    const count = this.indicators.length;
+    const activeSpread = 10;
+    const edgeSpread = 8;
+
+    const getGauss = (dist, spread) => {
+        if (dist > spread) return 0;
+        const sigma = spread / 2.5;
+        return Math.exp(- (dist * dist) / (2 * sigma * sigma));
+    };
+
+    const getQuad = (dist, spread) => {
+        if (dist > spread) return 0;
+        return Math.pow(1 - dist / spread, 2);
+    };
+
+    this.indicators.forEach((el, i) => {
+        // スタイル計算
+        const distActive = Math.abs(i - index);
+        // 操作可能になるまではハイライト（ホバーエフェクト）を出さない
+        const strActive = this.userInteractionsEnabled ? getGauss(distActive, activeSpread) : 0;
+
+        const distStart = Math.abs(i - 0);
+        const strStart = getQuad(distStart, edgeSpread);
+
+        const distEnd = Math.abs(i - (count - 1));
+        const strEnd = getQuad(distEnd, edgeSpread);
+
+        // 高さ計算
+        let scale = 1 + strActive * 0.4;
+        scale += strStart * 0.3;
+        scale += strEnd * 0.3;
+
+        // 透明度計算
+        let opacity = 0.1 + 0.1 * strActive;
+
+        // 出現アニメーション用: revealThresholdより大きいインデックスは隠す
+        // (左=小さいインデックス から出現させるため、i <= this.revealThreshold なら表示)
+        if (i > this.revealThreshold) {
+            opacity = 0;
+        }
+
+        if (window.innerWidth > mobile) {
+            el.style.transform = `scaleY(${scale})`;
+        } else {
+            el.style.transform = `scaleX(${scale})`;
+            el.style.transformOrigin = 'right center';
+        }
+        el.style.opacity = opacity;
+    });
+}
+
+FirstToLast() {
+    // プログレスバーの同期（常にscroll値に追従）
+    // アニメーション中（キー操作/クリック）は即座に反応させるため target(scrollIndex) を使う
+    let rawIdx;
+    if (this.isAnimating) {
+        rawIdx = this.scrollIndex;
+    } else {
+        rawIdx = -this.scroll / this.margin;
+    }
+
+    let idx = (rawIdx % this.count + this.count) % this.count;
+
+    let targetRatio = idx / this.count;
+    targetRatio = Math.max(0, Math.min(1, targetRatio));
+
+    // スムージング (70->1 の戻りを表現)
+    if (this.progressRatio === undefined) this.progressRatio = targetRatio;
+
+    // 距離が遠い場合（リワインド時など）は速く動かす
+    const diff = Math.abs(targetRatio - this.progressRatio);
+    const ease = 0.07;
+
+    if (this.isDragging) {
+        // Instant update during interaction
+        this.progressRatio = targetRatio;
+    } else {
+        this.progressRatio += (targetRatio - this.progressRatio) * ease;
+    }
+
+    const barIndex = Math.round(this.progressRatio * (this.barCount - 1));
+    this.updateProgressUI(barIndex);
+}
+
+
+render() {
+    this.time += 0.05;
+
+    // スクロールの慣性 (競合するため削除)
+    // this.scroll += (this.scrollTo - this.scroll) * 0.1;
+
+    // update items
+    if (this.materials) {
+        this.materials.forEach(m => {
+            m.uniforms.time.value = this.time;
         });
     }
 
-    FirstToLast() {
-        // プログレスバーの同期（常にscroll値に追従）
-        // アニメーション中（キー操作/クリック）は即座に反応させるため target(scrollIndex) を使う
-        let rawIdx;
-        if (this.isAnimating) {
-            rawIdx = this.scrollIndex;
-        } else {
-            rawIdx = -this.scroll / this.margin;
-        }
+    if (this.meshes) {
+        const wholeSize = this.count * this.margin;
+        const halfSize = wholeSize / 2;
 
-        let idx = (rawIdx % this.count + this.count) % this.count;
+        this.meshes.forEach((mesh, index) => {
+            // Calculate position with infinite wrapping
+            let rawPos = (index * this.margin) + this.scroll;
 
-        let targetRatio = idx / this.count;
-        targetRatio = Math.max(0, Math.min(1, targetRatio));
+            // Wrap position within [-halfSize, halfSize]
+            let pos = ((rawPos + halfSize) % wholeSize);
+            if (pos < 0) pos += wholeSize;
+            pos -= halfSize;
 
-        // スムージング (70->1 の戻りを表現)
-        if (this.progressRatio === undefined) this.progressRatio = targetRatio;
-
-        // 距離が遠い場合（リワインド時など）は速く動かす
-        const diff = Math.abs(targetRatio - this.progressRatio);
-        const ease = 0.07;
-
-        if (this.isDragging) {
-            // Instant update during interaction
-            this.progressRatio = targetRatio;
-        } else {
-            this.progressRatio += (targetRatio - this.progressRatio) * ease;
-        }
-
-        const barIndex = Math.round(this.progressRatio * (this.barCount - 1));
-        this.updateProgressUI(barIndex);
+            if (this.width > mobile) {
+                mesh.position.x = pos;
+                mesh.position.y = 0;
+            } else {
+                mesh.position.x = 0;
+                mesh.position.y = -pos;
+            }
+        });
     }
 
-
-    render() {
-        this.time += 0.05;
-
-        // スクロールの慣性 (競合するため削除)
-        // this.scroll += (this.scrollTo - this.scroll) * 0.1;
-
-        // update items
-        if (this.materials) {
-            this.materials.forEach(m => {
-                m.uniforms.time.value = this.time;
-            });
-        }
-
-        if (this.meshes) {
-            const wholeSize = this.count * this.margin;
-            const halfSize = wholeSize / 2;
-
-            this.meshes.forEach((mesh, index) => {
-                // Calculate position with infinite wrapping
-                let rawPos = (index * this.margin) + this.scroll;
-
-                // Wrap position within [-halfSize, halfSize]
-                let pos = ((rawPos + halfSize) % wholeSize);
-                if (pos < 0) pos += wholeSize;
-                pos -= halfSize;
-
-                if (this.width > mobile) {
-                    mesh.position.x = pos;
-                    mesh.position.y = 0;
-                } else {
-                    mesh.position.x = 0;
-                    mesh.position.y = -pos;
-                }
-            });
-        }
-
-        // update Progress Bar
-        this.FirstToLast();
+    // update Progress Bar
+    this.FirstToLast();
 
 
-        // update Progress Bar
-        this.FirstToLast();
+    // update Progress Bar
+    this.FirstToLast();
 
-        // Handle Continuous Scroll key press
-        this.updateScrollDuringLongPress();
+    // Handle Continuous Scroll key press
+    this.updateScrollDuringLongPress();
 
 
-        this.renderer.render(this.scene, this.camera);
-        window.requestAnimationFrame(this.render.bind(this));
-    }
+    this.renderer.render(this.scene, this.camera);
+    window.requestAnimationFrame(this.render.bind(this));
+}
 }
 
 
