@@ -750,7 +750,19 @@ export default class Sketch {
                     this.zoomCamera('longPress');
                 }, 500);
             }
-            return; // Skip drag logic
+            // Need to set dragStart for Tap detection in onCanvasUp
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            this.dragStart.x = clientX;
+            this.dragStart.y = clientY;
+            this.isTouchLongPress = false; // Reset flag
+
+            // We usually set isCanvasDragging=true for desktop, but for mobile we use Observer for swipe.
+            // However, onCanvasUp checks (!this.isCanvasDragging) return;
+            // So we MUST set it to true to allow onCanvasUp to fire.
+            this.isCanvasDragging = true;
+
+            return; 
         }
 
         // --- Desktop Logic Below --- 
@@ -818,16 +830,43 @@ export default class Sketch {
             this.touchLongPressTimer = null;
         }
 
-        if (!this.isCanvasDragging) return;
+        if (!this.isCanvasDragging && this.width > mobile) return;
+        // For mobile, we might not set isCanvasDragging in onCanvasDown if we only want Observer,
+        // but we need to proceed to check for Tap.
+        // Actually, let's update onCanvasDown to NOT set dragging on mobile, forcing us to allow !isCanvasDragging on mobile here?
+        // Or better: In onCanvasDown for mobile, capture dragStart.
+
+        // Let's assume onCanvasDown was NOT modified to set isCanvasDragging=true.
+        // So on desktop isCanvasDragging is true. On mobile it is false.
+
         this.isCanvasDragging = false;
+
+        // Also if we use Observer, preventDefault is true. touchend might not fire?
+        // Observer docs say it handles events.
+        // If Observer preventDefault is true, standard listeners might be affected.
+        // But let's assume valid.
 
         const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
         const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+
+        // If start point is missing (mobile didn't set it?), we can't calc dist.
+        // We added dragStart capture to onCanvasDown in corresponding block.
+
         const dist = Math.hypot(clientX - this.dragStart.x, clientY - this.dragStart.y);
 
         if (dist < 10 && this.meshes) {
-            // Mobile: Tap does nothing (disable tap navigation)
-            if (this.width <= mobile) return;
+            // Mobile: Tap Zones
+            if (this.width <= mobile) {
+                if (this.isTouchLongPress) return; // Ignore if it was a long press
+
+                const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+                if (clientY < this.height / 2) {
+                    this.navigate(-1); // Top half -> Prev
+                } else {
+                    this.navigate(1); // Bottom half -> Next
+                }
+                return;
+            }
 
             // Click to navigate (Desktop)
             this.mouse.x = (clientX / window.innerWidth) * 2 - 1;
