@@ -157,7 +157,7 @@ export default class Sketch {
             if (this.width < 500) {
                 // 500px未満は、500px時点の見た目（画角）を維持するためにカメラを引く
                 // 幅が小さくなる分、Zを大きくする（反比例）
-                this.baseZ = 2.0 * (500 / this.width);
+                this.baseZ = 1.8 * (500 / this.width);
             } else {
                 // 500px ~ 786px は 2.0 固定
                 this.baseZ = 2.2 * (500 / this.width);
@@ -224,6 +224,8 @@ export default class Sketch {
 
         // 進行度表示
         let completed = 0;
+        const progressObj = { value: 0 };
+
         preloadPromises.forEach(p => p.then(() => {
             completed++;
             // Retry fetching the element if it wasn't found initially
@@ -233,24 +235,50 @@ export default class Sketch {
                     loadingPercent = doc.getElementById('loading-percent');
                 } catch (e) { }
             }
-            if (loadingPercent) loadingPercent.innerText = Math.round((completed / preloadCount) * 100) + '%';
+            if (loadingPercent) {
+                const target = Math.round((completed / preloadCount) * 100);
+                gsap.to(progressObj, {
+                    value: target,
+                    duration: 0.5,
+                    ease: "power2.out",
+                    onUpdate: () => {
+                        loadingPercent.innerText = Math.round(progressObj.value) + '%';
+                    }
+                });
+            }
         }));
 
         Promise.all(preloadPromises).then(() => {
-            // 2. 完了 -> アプリ開始（ローディング消去）
-            if (iframe) {
-                iframe.style.opacity = 0;
-                setTimeout(() => {
-                    iframe.style.display = 'none';
-                }, 500);
+            const finish = () => {
+                // 2. 完了 -> アプリ開始（ローディング消去）
+                if (iframe) {
+                    iframe.style.opacity = 0;
+                    setTimeout(() => {
+                        iframe.style.display = 'none';
+                    }, 500);
+                }
+
+                // 重要: 初期スクロールやアニメーションの開始トリガーがあればここで呼ぶ
+                // 今回は render loop が既に回っているので、meshが増えれば表示される
+                this.initialCameraAnimation();
+
+                // 3. 残りの画像をバックグラウンドで順次ロード
+                this.loadRemainingImages(images, preloadCount);
+            };
+
+            if (loadingPercent) {
+                // アニメーションが完了するのを待つ（または強制的に完了へ向かう）
+                gsap.to(progressObj, {
+                    value: 100,
+                    duration: 0.5,
+                    onUpdate: () => {
+                        loadingPercent.innerText = Math.round(progressObj.value) + '%';
+                    },
+                    onComplete: finish
+                });
+            } else {
+                finish();
             }
-
-            // 重要: 初期スクロールやアニメーションの開始トリガーがあればここで呼ぶ
-            // 今回は render loop が既に回っているので、meshが増えれば表示される
-            this.initialCameraAnimation();
-
-            // 3. 残りの画像をバックグラウンドで順次ロード
-            this.loadRemainingImages(images, preloadCount);
         });
     }
 
