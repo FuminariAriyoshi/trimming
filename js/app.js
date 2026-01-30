@@ -714,8 +714,8 @@ export default class Sketch {
         this.dragScrollStart = this.scroll;
         this.isZoomed = false;
 
-        // Long press detection for touch (Only if NOT mobile)
-        if (this.width > mobile && e.touches && e.touches.length > 0) {
+        // Long press detection for touch
+        if (e.touches && e.touches.length > 0) {
             this.touchLongPressTimer = setTimeout(() => {
                 this.isTouchLongPress = true;
                 this.zoomCamera('longPress');
@@ -857,10 +857,8 @@ export default class Sketch {
         this.isDragging = true;
         this.isAnimating = false; // Allow real-time scroll updates
 
-        // カメラを引く (Mobileの場合は引かない)
-        if (this.width > mobile) {
-            this.zoomCamera();
-        }
+        // カメラを引く
+        this.zoomCamera();
 
         this.updateDrag(e);
     }
