@@ -7,9 +7,46 @@
   <title>Trimming</title>
   <link rel="icon" href="favicon.ico" />
   <link rel="stylesheet" href="styles.css">
+  <style>
+    #loading-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #fff;
+      z-index: 9999;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: opacity 0.5s ease;
+      pointer-events: none;
+    }
+
+    .loading-percent {
+      font-family: 'Inter', sans-serif;
+      font-size: 80px;
+      font-weight: 300;
+      color: #000;
+    }
+
+    .loading-label {
+      position: absolute;
+      bottom: 45%;
+      font-size: 14px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #666;
+      margin-top: 10px;
+    }
+  </style>
 </head>
 
 <body>
+  <div id="loading-screen">
+    <div class="loading-percent" id="loading-percent">0%</div>
+    <div class="loading-label">Loading</div>
+  </div>
   <div>
     <header class="header">
       <a href="https://www.instagram.com/kikkawarei/" target="_blank"><span class="link-text">Instagram</span></a>

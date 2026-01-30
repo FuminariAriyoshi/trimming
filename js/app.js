@@ -186,54 +186,96 @@ export default class Sketch {
         this.geometry = new THREE.PlaneGeometry(1.414, 1, 10, 10);
         this.materials = [];
         this.meshes = [];
+        this.itemGroups = [];
 
         const images = [...document.querySelectorAll('.item img')];
         this.textElements = [];
-        console.log('Detected images:', images);
         this.count = images.length;
 
-        images.forEach((img, i) => {
-            // ここで画像を読み込んでテクスチャにしています
-            const texture = new THREE.TextureLoader().load(img.src);
+        // プリロード枚数
+        const preloadCount = Math.min(this.count, 5);
 
-            // 各画像ごとに新しいShaderMaterialを作成しています
-            const material = new THREE.ShaderMaterial({
-                uniforms: {
-                    time: { value: 0 },
-                    uBend: { value: 0.06 },
-                    uAxis: { value: this.width > mobile ? 0.0 : 1.0 },
-                    // ここでテクスチャをuniformsに渡してシェーダーと繋げています
-                    uTexture: { value: texture }
-                },
-                side: THREE.DoubleSide,
-                fragmentShader: fragment,
-                vertexShader: vertex,
-                wireframe: false
+        const loadingPercent = document.getElementById('loading-percent');
+        const loadingScreen = document.getElementById('loading-screen');
+
+        // 1. まず最初の数枚をロード
+        const preloadPromises = [];
+        for (let i = 0; i < preloadCount; i++) {
+            preloadPromises.push(this.loadAndCreateMesh(images[i], i));
+        }
+
+        // 進行度表示
+        let completed = 0;
+        preloadPromises.forEach(p => p.then(() => {
+            completed++;
+            if (loadingPercent) loadingPercent.innerText = Math.round((completed / preloadCount) * 100) + '%';
+        }));
+
+        Promise.all(preloadPromises).then(() => {
+            // 2. 完了 -> アプリ開始（ローディング消去）
+            if (loadingScreen) {
+                loadingScreen.style.opacity = 0;
+                setTimeout(() => {
+                    loadingScreen.style.display = 'none';
+                }, 500);
+            }
+
+            // 重要: 初期スクロールやアニメーションの開始トリガーがあればここで呼ぶ
+            // 今回は render loop が既に回っているので、meshが増えれば表示される
+
+            // 3. 残りの画像をバックグラウンドで順次ロード
+            this.loadRemainingImages(images, preloadCount);
+        });
+    }
+
+    // 共通のロード＆メッシュ作成処理
+    loadAndCreateMesh(img, index) {
+        return new Promise((resolve) => {
+            new THREE.TextureLoader().load(img.src, (texture) => {
+                const material = new THREE.ShaderMaterial({
+                    uniforms: {
+                        time: { value: 0 },
+                        uBend: { value: 0.06 },
+                        uAxis: { value: this.width > 786 ? 0.0 : 1.0 },
+                        uTexture: { value: texture }
+                    },
+                    side: THREE.DoubleSide,
+                    fragmentShader: fragment,
+                    vertexShader: vertex,
+                    wireframe: false
+                });
+
+                this.materials[index] = material;
+
+                let mesh = new THREE.Mesh(this.geometry, material);
+                mesh.position.y = (index - (this.count - 1) / 2) * this.margin;
+                mesh.position.x = 0;
+
+                this.scene.add(mesh);
+                this.meshes[index] = mesh;
+
+                // テキスト要素の関連付け
+                const textEl = img.parentElement.querySelector('.text');
+                this.textElements[index] = textEl;
+                if (textEl) {
+                    const targets = textEl.querySelectorAll('.year, .date');
+                    targets.forEach(el => this.wrapLettersInSpan(el));
+                }
+
+                resolve();
             });
-
-            this.materials.push(material);
-
-            let mesh = new THREE.Mesh(this.geometry, material);
-
-            // 縦配置（Y軸）初期値 - renderで上書きされますが一応
-            mesh.position.y = (i - (this.count - 1) / 2) * this.margin;
-            mesh.position.x = 0;
-
-            this.scene.add(mesh);
-            this.meshes.push(mesh);
-
-            // 親要素からテキストを探して格納（無ければnull）
-            const textEl = img.parentElement.querySelector('.text');
-            this.textElements.push(textEl);
         });
+    }
 
-        // テキストを一文字ずつspanで囲む処理
-        this.textElements.forEach(textEl => {
-            if (!textEl) return;
-            const targets = textEl.querySelectorAll('.year, .date');
-            targets.forEach(el => this.wrapLettersInSpan(el));
-        });
-
+    loadRemainingImages(images, startIndex) {
+        // 再帰またはループで順次ロード
+        const loadNext = (i) => {
+            if (i >= images.length) return;
+            this.loadAndCreateMesh(images[i], i).then(() => {
+                loadNext(i + 1);
+            });
+        };
+        loadNext(startIndex);
     }
 
     wrapLettersInSpan(element) {
