@@ -57,6 +57,7 @@ export default class Sketch {
         this.initObserver(); // Initialize GSAP Observer
         this.render();
         this.setupResize();
+        setTimeout(() => this.resize(), 100);
         // this.scrollAnimation(); // ここではまだ呼ばない
 
         // ローディング完了後（あるいは即時）アニメーション開始

@@ -1,9 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500&display=swap');
 
+html,
 body {
+    width: 100%;
+    height: 100%;
     background-color: white;
     margin: 0;
+    padding: 0;
     overflow: hidden;
+    overscroll-behavior: none;
 }
 
 
@@ -163,7 +168,8 @@ body {
     position: fixed;
     top: 0;
     left: 0;
-    width: 100vw;
+    width: 100%;
+    height: 100vh;
     height: 100dvh;
     z-index: 0;
     touch-action: none;
