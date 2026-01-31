@@ -290,8 +290,9 @@ export default class Sketch {
     // 共通のロード＆メッシュ作成処理
     loadAndCreateMesh(img, index) {
         return new Promise((resolve) => {
+            const src = img.dataset.src || img.src;
             new THREE.TextureLoader().load(
-                img.src,
+                src,
                 (texture) => {
                     const material = new THREE.ShaderMaterial({
                         uniforms: {
@@ -333,7 +334,7 @@ export default class Sketch {
                 },
                 undefined, // onProgress
                 (err) => {
-                    console.warn(`Failed to load texture for index ${index}: ${img.src}`, err);
+                    console.warn(`Failed to load texture for index ${index}: ${src}`, err);
                     resolve(); // エラーでも止まらないようにresolveする
                 }
             );
