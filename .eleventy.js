@@ -13,6 +13,13 @@ module.exports = (eleventyConfig) => {
   eleventyConfig.addPassthroughCopy('load.html');
   eleventyConfig.addPassthroughCopy('404.html');
 
+  // Explicitly sort posts by filename to ensure order matches 01, 02, etc.
+  eleventyConfig.addCollection("posts", function (collectionApi) {
+    return collectionApi.getFilteredByGlob("posts/*.md").sort((a, b) => {
+      return a.fileSlug.localeCompare(b.fileSlug);
+    });
+  });
+
   const options = {
     html: true,
     breaks: true,
