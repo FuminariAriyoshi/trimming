@@ -31,8 +31,7 @@
       </header>
       {% for post in collections.posts %}
       <div class="item">
-        <img data-src="{{ post.data.image }}"
-          src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="{{ post.data.title }}">
+        <img src="{{ post.data.image }}" alt="{{ post.data.title }}">
         <div class="text">
           <div class="yearWrapper">
             {% if post.data.year and post.data.year != "" %}

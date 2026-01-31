@@ -290,7 +290,7 @@ export default class Sketch {
     // 共通のロード＆メッシュ作成処理
     loadAndCreateMesh(img, index) {
         return new Promise((resolve) => {
-            const src = img.dataset.src || img.src;
+            const src = img.getAttribute('src');
             new THREE.TextureLoader().load(
                 src,
                 (texture) => {
